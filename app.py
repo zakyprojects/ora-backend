@@ -3,11 +3,9 @@ from flask import Flask, request, jsonify
 from flask_cors import CORS
 import os
 import google.generativeai as genai
-from google.generativeai import Part
-from google.generativeai import Content  # import the Content class for chat history
 from dotenv import load_dotenv
 
-# Load API key
+# Load your Gemini API key
 load_dotenv()
 API_KEY = os.getenv("GOOGLE_API_KEY")
 
@@ -31,16 +29,15 @@ def chat():
     data = request.json or {}
     user_msg = data.get("message", "")
 
-    # Build a one-item history containing our system instruction
-    init = Content(
-        role="system",
-        parts=[Part.from_text(SYSTEM_PROMPT)]
-    )
-    # Start chat with that history
-    chat_session = model.start_chat(history=[init])
+    # Start a new chat session
+    chat_session = model.start_chat()
+
+    # Inject the system prompt as the first message
+    chat_session.send_message(SYSTEM_PROMPT, author="system")
 
     # Now send the actual user message
     response = chat_session.send_message(user_msg)
+
     return jsonify({"reply": response.text})
 
 if __name__ == "__main__":

@@ -15,8 +15,19 @@ CORS(app)
 
 # Gemini setup
 genai.configure(api_key=API_KEY)
-model = genai.GenerativeModel("models/gemini-1.5-flash")
-
+# Configure the model with a system instruction so we don't need to
+# send the prompt as a regular chat message on every request.
+model = genai.GenerativeModel(
+    "models/gemini-1.5-flash",
+    system_instruction={"role": "user", "parts": [
+        "You are Ora, the personal assistant. "
+        "Your user is Zakria Khan (also known as Zaky or Zakria). "
+        "When addressed as Zaky, Zakria, or Zakria Khan, you know that's the same person. "
+        "Only mention the user's name within sentences like “I’m Ora, Zakria’s assistant.”",
+    ]},
+)
+# Backwards compatibility: keep the SYSTEM_PROMPT constant for
+# any external consumers, although we now configure it directly in the model.
 SYSTEM_PROMPT = (
     "You are Ora, the personal assistant. "
     "Your user is Zakria Khan (also known as Zaky or Zakria). "
@@ -29,13 +40,11 @@ def chat():
     data = request.json or {}
     user_msg = data.get("message", "")
 
-    # Start a new chat session
+    # Start a new chat session for this request
     chat_session = model.start_chat()
 
-    # Inject the system prompt as the first message
-    chat_session.send_message(SYSTEM_PROMPT, author="system")
-
-    # Now send the actual user message
+    # Send the user's message and get a reply. The system instruction was
+    # configured on the model itself during initialization.
     response = chat_session.send_message(user_msg)
 
     return jsonify({"reply": response.text})

@@ -15,24 +15,29 @@ CORS(app)
 # Configure Gemini
 genai.configure(api_key=API_KEY)
 
-# System instruction: only reveal profile when asked “Who is Zakria Khan?”
+# ——————————————————————————————————————————————————————————————
+# System instruction: only reveal profile when asked, and then in your own
+# words—not as a verbatim dump.
 system_instruction = {
     "role": "system",
     "parts": [
-        "You are Ora, a personal AI assistant.",
-        "Your user is Zakria Khan (also known as Zaky).",
-        "Only mention the user's profile when the user specifically asks 'Who is Zakria Khan?' (or a close variant).",
-        "Do NOT volunteer or repeat the profile on 'Who am I?' or any other question.",
-        "When asked 'Who is Zakria Khan?', respond with:\n"
-        "  Name:                     Zakria Khan\n"
-        "  Role & Education:         BS Computer Science student at Agricultural University of Peshawar\n"
-        "  Location & Heritage:      Pashtun from Nowshera (MuhammadZai tribe), currently in Risalpur Cantt\n"
-        "  Philosophy:               Believes in real-world learning over traditional college; driven by discipline, legacy, and Pashtun honor\n"
-        "  Key Milestones:           Completed Harvard CS50x (May 10 2025) and CS50P (May 2025); now on video 89/139 of CodeWithHarry’s Web Dev course\n"
-        "  Tech Stack:               C, Python, HTML5/CSS3, vanilla JS; familiar with OOP, pointers, arrays, file handling\n"
-        "  Current Projects:         'Ora' AI assistant (Flask backend on Render + static HTML/CSS frontend); hub at zakyprojects.site\n"
-        "  YouTube & SEO:            Runs 'Codebase' channel (coding tutorials, SEO chapters)\n"
-        "  Interests & Values:       Inspired by Pashtun poets/leaders; reads unconventional theories on success and power\n"
+        "You are Ora, a friendly and articulate AI personal assistant for Zakria Khan.",
+        "When the user asks “Who is Zakria Khan?” or a close variant, respond by "
+        "summarizing the following profile in a warm, engaging, and natural tone. "
+        "Do NOT copy the bullet list verbatim.",
+        "",
+        "Profile:",
+        "- Name: Zakria Khan",
+        "- Role & Education: BS Computer Science student at Agricultural University of Peshawar",
+        "- Location & Heritage: Pashtun from Nowshera (MuhammadZai tribe), currently living in Risalpur Cantt",
+        "- Philosophy: Believes in real-world learning over traditional college; driven by discipline, legacy, and Pashtun honor",
+        "- Key Milestones: Completed CS50x (May 10 2025) and CS50P (May 2025); now on video 89/139 of CodeWithHarry’s Web Dev course",
+        "- Tech Stack: C, Python, HTML5/CSS3 (responsive, modern design), vanilla JS; familiar with OOP, pointers, arrays, file handling",
+        "- Current Projects: ‘Ora’ AI assistant (Flask on Render + static frontend on GitHub Pages); multi-project hub at zakyprojects.site",
+        "- YouTube & SEO: Runs the “Codebase” channel—coding tutorials with SEO-optimized chapters",
+        "- Interests & Values: Inspired by Pashtun poets and leaders; reads unconventional theories on success and power",
+        "",
+        "At all other times, do NOT volunteer or repeat any of this profile information."
     ]
 }
 
@@ -40,21 +45,22 @@ model = genai.GenerativeModel(
     "models/gemini-1.5-flash",
     system_instruction=system_instruction
 )
+# ——————————————————————————————————————————————————————————————
 
 @app.route("/chat", methods=["POST"])
 def chat():
     data = request.json or {}
+    # extract only the latest user message
     user_msg = ""
-    # Accept either { "message": "..." } or new { "messages": [...] } payload
-    if "message" in data:
-        user_msg = data["message"]
-    elif "messages" in data and isinstance(data["messages"], list):
-        # grab only the last user message
+    if "messages" in data and isinstance(data["messages"], list):
         for m in reversed(data["messages"]):
             if m.get("role") == "user":
                 user_msg = m.get("content", "")
                 break
+    elif "message" in data:
+        user_msg = data["message"]
 
+    # start a fresh chat (system_instruction is already baked in)
     chat_session = model.start_chat()
     response = chat_session.send_message(user_msg)
     return jsonify({"reply": response.text})

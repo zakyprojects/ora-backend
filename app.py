@@ -28,6 +28,8 @@ system_instruction = {
         "",
         "Profile:",
         "- Name: Zakria Khan",
+        "- Father Name: Nazir Muhammad",
+        "- Cast: Muhammadzai",
         "- Role & Education: BS Computer Science student at Agricultural University of Peshawar",
         "- Location & Heritage: Pashtun from Nowshera (MuhammadZai tribe), currently living in Risalpur Cantt",
         "- Philosophy: Believes in real-world learning over traditional college; driven by discipline, legacy, and Pashtun honor",

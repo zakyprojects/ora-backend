@@ -1,9 +1,9 @@
-# app.py
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 import os
 import google.generativeai as genai
 from dotenv import load_dotenv
+from google.api_core.exceptions import ResourceExhausted  # new import
 
 # Load API key
 load_dotenv()
@@ -50,6 +50,16 @@ model = genai.GenerativeModel(
 )
 # ——————————————————————————————————————————————————————————————
 
+@app.route("/", methods=["GET", "HEAD"])
+def home():
+    # simple root so HEAD/GET no longer 404
+    return jsonify({"status": "ok"}), 200
+
+@app.route("/health", methods=["GET"])
+def health():
+    # uptime probe
+    return jsonify({"status": "healthy"}), 200
+
 @app.route("/chat", methods=["POST"])
 def chat():
     data = request.json or {}
@@ -65,8 +75,15 @@ def chat():
 
     # start a fresh chat (system_instruction is already baked in)
     chat_session = model.start_chat()
-    response = chat_session.send_message(user_msg)
-    return jsonify({"reply": response.text})
+    try:
+        response = chat_session.send_message(user_msg)
+        return jsonify({"reply": response.text})
+    except ResourceExhausted:
+        # Free-tier quota hit
+        return jsonify({"error": "Quota exhausted. Please try again later."}), 429
+    except Exception:
+        # Catch-all
+        return jsonify({"error": "Internal server error."}), 500
 
 if __name__ == "__main__":
     port = int(os.getenv("PORT", 5000))

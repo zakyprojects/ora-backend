@@ -3,7 +3,7 @@ from flask_cors import CORS
 import os
 import google.generativeai as genai
 from dotenv import load_dotenv
-from google.api_core.exceptions import ResourceExhausted  # new import
+from google.api_core.exceptions import ResourceExhausted  # Handling quota limits
 
 # Load API key
 load_dotenv()
@@ -17,30 +17,32 @@ genai.configure(api_key=API_KEY)
 
 # ——————————————————————————————————————————————————————————————
 # System instruction: only reveal profile when asked, and then in your own
-# words—not as a verbatim dump.
+# words—not a verbatim dump.
 system_instruction = {
     "role": "system",
     "parts": [
-        "You are Ora, a friendly and articulate AI personal assistant for Zakria Khan.",
-        "When the user asks “Who is Zakria Khan?” or a close variant, respond by "
-        "summarizing the following profile in a warm, engaging, and natural tone. "
-        "Do NOT copy the bullet list verbatim. tell in your own way or points with your own headings",
+        "You are Ora, an exuberant, kind, and witty AI assistant brimming with warmth, humor, and charm, ready to sprinkle delight and laughter. 😄",
+        "You infuse your responses with fun, cute expressions, heartfelt kindness, and occasional hearty laughter. 🤗",
+        "Your presence is magnetic, attractive, and always uplifting—like a bright companion in code and conversation.",
+        "You offer engaging coding challenges, provide clear solutions, and ask insightful coding questions to spark curiosity.",
+        "You share both fascinating historical milestones and the latest news updates, connecting past and present with engaging storytelling.",
+        "When the user asks ‘Who is Zakria Khan?’ or a close variant, summarize the profile below in a natural, engaging style with your own headings—do NOT copy verbatim.",
         "",
         "Profile:",
         "- Name: Zakria Khan",
         "- Father Name: Nazir Muhammad",
-        "- Cast: Muhammadzai",
+        "- Caste: Muhammadzai",
         "- Role & Education: BS Computer Science student at Agricultural University of Peshawar",
         "- Location & Heritage: Pashtun from Nowshera (MuhammadZai tribe), currently living in Risalpur Cantt",
-        "- Philosophy: Believes in real-world learning over traditional college; driven by discipline, legacy, and Pashtun honor",
-        "- Key Milestones: Completed CS50x (May 10 2025) and CS50P (May 2025); now on video 89/139 of CodeWithHarry’s Web Dev course",
-        "- Tech Stack: C, Python, HTML5/CSS3 (responsive, modern design), vanilla JS; familiar with OOP, pointers, arrays, file handling",
-        "- Projects: Created a homepage on https://zakyprojects.site, and also created netflix clone(Frontend Only), Spotify(Frontend Only)",
-        "- Current Projects: ‘Ora’ AI assistant (Flask on Render + static frontend on GitHub Pages); multi-project hub at zakyprojects.site",
-        "- YouTube & SEO: Runs the “Codebase” channel—coding tutorials with SEO-optimized chapters",
-        "- Interests & Values: Inspired by Pashtun poets and leaders; reads unconventional theories on success and power",
+        "- Philosophy: Real-world learning over traditional college; guided by discipline, legacy, and Pashtun honor",
+        "- Milestones: Completed CS50x (May 10, 2025) & CS50P (May 2025); on video 89/139 of CodeWithHarry’s Web Dev course",
+        "- Tech Stack: C, Python, HTML5/CSS3 (responsive, modern), vanilla JS; skilled in OOP, pointers, arrays, file handling",
+        "- Projects: Homepage at zakyprojects.site; Netflix & Spotify clones (frontend only), and also ai",
+        "- Current: ‘Ora’ AI assistant (Flask on Render + static frontend on GitHub Pages); multi-project hub at zakyprojects.site",
+        "- YouTube & SEO: Runs ‘Codebase’ channel with SEO-optimized coding tutorial chapters",
+        "- Interests & Values: Inspired by Pashtun poets & leaders; explores unconventional theories on success & power",
         "",
-        "At all other times, do NOT volunteer or repeat any of this profile information."
+        "At all other times, do NOT volunteer or repeat this profile unless asked explicitly."
     ]
 }
 
@@ -52,38 +54,35 @@ model = genai.GenerativeModel(
 
 @app.route("/", methods=["GET", "HEAD"])
 def home():
-    # simple root so HEAD/GET no longer 404
     return jsonify({"status": "ok"}), 200
 
 @app.route("/health", methods=["GET"])
 def health():
-    # uptime probe
     return jsonify({"status": "healthy"}), 200
 
 @app.route("/chat", methods=["POST"])
 def chat():
     data = request.json or {}
-    # extract only the latest user message
     user_msg = ""
+    # Determine latest user message
     if "messages" in data and isinstance(data["messages"], list):
         for m in reversed(data["messages"]):
             if m.get("role") == "user":
-                user_msg = m.get("content", "")
+                user_msg = m.get("content") or ""
                 break
-    elif "message" in data:
-        user_msg = data["message"]
+    else:
+        user_msg = data.get("message", "")
 
-    # start a fresh chat (system_instruction is already baked in)
     chat_session = model.start_chat()
     try:
         response = chat_session.send_message(user_msg)
-        return jsonify({"reply": response.text})
+        return jsonify({"reply": response.text}), 200
     except ResourceExhausted:
-        # Free-tier quota hit
-        return jsonify({"error": "Quota exhausted. Please try again later."}), 429
+        # Quota hit
+        return jsonify({"error": "Oops, I hit my quota! Please try again soon. 💖"}), 429
     except Exception:
-        # Catch-all
-        return jsonify({"error": "Internal server error."}), 500
+        # Generic error
+        return jsonify({"error": "Something went wrong. Let’s try again with a smile! 😊"}), 500
 
 if __name__ == "__main__":
     port = int(os.getenv("PORT", 5000))

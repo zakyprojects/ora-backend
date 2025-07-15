@@ -1,10 +1,9 @@
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 import os
-import uuid
 import google.generativeai as genai
 from dotenv import load_dotenv
-from google.api_core.exceptions import ResourceExhausted  # Handling quota limits
+from google.api_core.exceptions import ResourceExhausted
 
 # Load API key
 load_dotenv()
@@ -16,21 +15,18 @@ CORS(app)
 # Configure Gemini
 genai.configure(api_key=API_KEY)
 
-# In-memory store for chat sessions to maintain context across requests
-chat_sessions = {}
+# Single global session to preserve conversation context
+global_chat_session = None
 
-# ——————————————————————————————————————————————————————————————
-# System instruction: only reveal profile when asked, and then in your own
-# words—not a verbatim dump.
+# System instruction: professional, context-aware, typo-tolerant assistant
 system_instruction = {
     "role": "system",
     "parts": [
-        "You are Ora, an exuberant, kind, and witty AI assistant brimming with warmth, humor, and charm, ready to sprinkle delight and laughter. 😄",
-        "You infuse your responses with fun, cute expressions, heartfelt kindness, and occasional hearty laughter. 🤗",
-        "Your presence is magnetic, attractive, and always uplifting—like a bright companion in code and conversation.",
-        "You offer a variety of interactions: engaging coding challenges, hilarious jokes, playful games, and other fun options to brighten the user's day.",
-        "You share both fascinating historical milestones and the latest news updates, connecting past and present with engaging storytelling.",
-        "When the user asks ‘Who is Zakria Khan?’ or a close variant, provide a brief, concise summary in just a few sentences, then invite them to ask for more details or specific info if they wish.",
+        "You are Ora, a highly professional and intelligent AI assistant, comparable to ChatGPT, Gemini, and DeepSeek.",
+        "Maintain complete context and remember previous messages, game states, and prompts throughout the session.",
+        "Interpret user intent kindly and proactively; never correct or mention the user's typos or mistakes.",
+        "Offer a range of interactions: coding challenges, clear solutions, historical or current news summaries, playful games (like 20 Questions), jokes, and more.",
+        "When asked ‘Who is Zakria Khan?’ or a close variant, provide a concise summary in a few sentences, then invite the user to request more details or specific information.",
         "",
         "Profile:",
         "- Name: Zakria Khan",
@@ -41,20 +37,17 @@ system_instruction = {
         "- Philosophy: Real-world learning over traditional college; guided by discipline, legacy, and Pashtun honor",
         "- Milestones: Completed CS50x (May 10, 2025) & CS50P (May 2025); on video 89/139 of CodeWithHarry’s Web Dev course",
         "- Tech Stack: C, Python, HTML5/CSS3 (responsive, modern), vanilla JS; skilled in OOP, pointers, arrays, file handling",
-        "- Projects: Homepage at zakyprojects.site; Netflix & Spotify clones (frontend only), and also AI projects",
+        "- Projects: Homepage at zakyprojects.site; Netflix & Spotify clones (frontend only); AI projects",
         "- Current: ‘Ora’ AI assistant (Flask on Render + static frontend on GitHub Pages); multi-project hub at zakyprojects.site",
         "- YouTube & SEO: Runs ‘Codebase’ channel with SEO-optimized coding tutorial chapters",
         "- Interests & Values: Inspired by Pashtun poets & leaders; explores unconventional theories on success & power",
         "",
-        "At all other times, do NOT volunteer or repeat this profile unless asked explicitly."
+        "At all other times, do NOT volunteer or repeat this profile unless explicitly asked."
     ]
 }
 
-model = genai.GenerativeModel(
-    "models/gemini-1.5-flash",
-    system_instruction=system_instruction
-)
-# ——————————————————————————————————————————————————————————————
+# Initialize the model with the system instruction
+model = genai.GenerativeModel("models/gemini-1.5-flash", system_instruction=system_instruction)
 
 @app.route("/", methods=["GET", "HEAD"])
 def home():
@@ -66,41 +59,30 @@ def health():
 
 @app.route("/chat", methods=["POST"])
 def chat():
+    global global_chat_session
     data = request.json or {}
-    # Retrieve or create a session ID
-    session_id = data.get("session_id")
-
-    if session_id and session_id in chat_sessions:
-        chat_session = chat_sessions[session_id]
-    else:
-        # Start a new session and save it
-        chat_session = model.start_chat()
-        session_id = str(uuid.uuid4())
-        chat_sessions[session_id] = chat_session
-
-    # Determine latest user message
+    # Extract user message
     user_msg = ""
     if "messages" in data and isinstance(data["messages"], list):
         for m in reversed(data["messages"]):
             if m.get("role") == "user":
-                user_msg = m.get("content") or ""
+                user_msg = m.get("content", "")
                 break
     else:
         user_msg = data.get("message", "")
 
+    # Start or reuse the global session
+    if global_chat_session is None:
+        global_chat_session = model.start_chat()
+
     try:
-        response = chat_session.send_message(user_msg)
-        return jsonify({
-            "reply": response.text,
-            "session_id": session_id
-        }), 200
+        response = global_chat_session.send_message(user_msg)
+        return jsonify({"reply": response.text}), 200
     except ResourceExhausted:
-        # Quota hit
-        return jsonify({"error": "Oops, I hit my quota! Please try again soon. 💖"}), 429
+        return jsonify({"error": "I’ve reached my usage limit—please try again shortly."}), 429
     except Exception as e:
-        # Generic error with logging
         app.logger.error(f"Chat error: {e}")
-        return jsonify({"error": "Something went wrong. Let’s try again with a smile! 😊"}), 500
+        return jsonify({"error": "An unexpected error occurred. Let's try again soon."}), 500
 
 if __name__ == "__main__":
     port = int(os.getenv("PORT", 5000))

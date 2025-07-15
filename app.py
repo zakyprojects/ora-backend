@@ -1,6 +1,7 @@
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 import os
+import uuid
 import google.generativeai as genai
 from dotenv import load_dotenv
 from google.api_core.exceptions import ResourceExhausted  # Handling quota limits
@@ -14,6 +15,9 @@ CORS(app)
 
 # Configure Gemini
 genai.configure(api_key=API_KEY)
+
+# In-memory store for chat sessions to maintain context across requests
+chat_sessions = {}
 
 # ——————————————————————————————————————————————————————————————
 # System instruction: only reveal profile when asked, and then in your own
@@ -63,8 +67,19 @@ def health():
 @app.route("/chat", methods=["POST"])
 def chat():
     data = request.json or {}
-    user_msg = ""
+    # Retrieve or create a session ID
+    session_id = data.get("session_id")
+
+    if session_id and session_id in chat_sessions:
+        chat_session = chat_sessions[session_id]
+    else:
+        # Start a new session and save it
+        chat_session = model.start_chat()
+        session_id = str(uuid.uuid4())
+        chat_sessions[session_id] = chat_session
+
     # Determine latest user message
+    user_msg = ""
     if "messages" in data and isinstance(data["messages"], list):
         for m in reversed(data["messages"]):
             if m.get("role") == "user":
@@ -73,10 +88,12 @@ def chat():
     else:
         user_msg = data.get("message", "")
 
-    chat_session = model.start_chat()
     try:
         response = chat_session.send_message(user_msg)
-        return jsonify({"reply": response.text}), 200
+        return jsonify({
+            "reply": response.text,
+            "session_id": session_id
+        }), 200
     except ResourceExhausted:
         # Quota hit
         return jsonify({"error": "Oops, I hit my quota! Please try again soon. 💖"}), 429

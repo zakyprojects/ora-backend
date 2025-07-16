@@ -12,18 +12,20 @@ API_KEY = os.getenv("GOOGLE_API_KEY")
 app = Flask(__name__)
 CORS(app)
 
+# --- NEW: Simple in-memory cache ---
+# This dictionary will store user messages and their replies.
+message_cache = {}
+
 # Configure Gemini
 try:
     genai.configure(api_key=API_KEY)
 except Exception as e:
     app.logger.error(f"Failed to configure Gemini: {e}")
-    # Handle missing API key gracefully
     pass
 
-# Single global session to preserve conversation context
 global_chat_session = None
 
-# System instruction: professional, context-aware, typo-tolerant assistant
+# ... (keep your system_instruction and model initialization the same) ...
 system_instruction = {
     "role": "system",
     "parts": [
@@ -52,10 +54,10 @@ system_instruction = {
 }
 
 
-# Initialize the model only if the API key is present
 model = None
 if API_KEY:
     model = genai.GenerativeModel("models/gemini-1.5-flash", system_instruction=system_instruction)
+
 
 @app.route("/", methods=["GET", "HEAD"])
 def home():
@@ -65,17 +67,17 @@ def home():
 def health():
     return jsonify({"status": "healthy"}), 200
 
+
 @app.route("/chat", methods=["POST"])
 def chat():
     global global_chat_session
 
     if not model:
-        return jsonify({"error": "AI model is not configured. Please check the server's API key."}), 503
+        return jsonify({"error": "AI model is not configured."}), 503
 
     data = request.json or {}
     user_msg = data.get("message", "")
 
-    # Fallback for different message structures
     if not user_msg and "messages" in data and isinstance(data["messages"], list):
         for m in reversed(data["messages"]):
             if m.get("role") == "user":
@@ -83,27 +85,37 @@ def chat():
                 break
 
     if not user_msg:
-        return jsonify({"error": "Message content is missing or empty."}), 400
+        return jsonify({"error": "Message content is missing."}), 400
 
-    # Start or reuse the global session
+    # --- NEW: Check the cache first ---
+    if user_msg in message_cache:
+        app.logger.info(f"Cache hit for: '{user_msg}'")
+        return jsonify({"reply": message_cache[user_msg], "source": "cache"}), 200
+
+    app.logger.info(f"Cache miss for: '{user_msg}'. Calling API.")
+    
     if global_chat_session is None:
         global_chat_session = model.start_chat()
 
     try:
         response = global_chat_session.send_message(user_msg)
-        return jsonify({"reply": response.text}), 200
-    except ResourceExhausted:
-        app.logger.warning("ResourceExhausted: Usage limit reached.")
-        return jsonify({"error": "I’ve reached my usage limit—please try again shortly."}), 429
-    except ServiceUnavailable:
-        app.logger.error("ServiceUnavailable: The model is currently overloaded or unavailable.")
-        return jsonify({"error": "The AI is currently overloaded. Please try your request again in a moment."}), 503
+        reply_text = response.text
+
+        # --- NEW: Save the new response to the cache ---
+        message_cache[user_msg] = reply_text
+
+        return jsonify({"reply": reply_text}), 200
+    except (ResourceExhausted, ServiceUnavailable) as e:
+        error_message = "I’ve reached my usage limit—please try again shortly."
+        if isinstance(e, ServiceUnavailable):
+            error_message = "The AI is currently overloaded. Please try again in a moment."
+        app.logger.error(f"{type(e).__name__}: {error_message}")
+        return jsonify({"error": error_message}), 429 if isinstance(e, ResourceExhausted) else 503
     except Exception as e:
         app.logger.error(f"An unexpected chat error occurred: {e}")
-        # Reset the chat session on an unknown error
         global_chat_session = None
-        return jsonify({"error": "An unexpected error occurred. Your session has been reset. Please try again."}), 500
+        return jsonify({"error": "An unexpected error occurred. Your session has been reset."}), 500
 
 if __name__ == "__main__":
     port = int(os.getenv("PORT", 5000))
-    app.run(host="0.0.0.0", port=port, debug=False) # Set debug=False for production
+    app.run(host="0.0.0.0", port=port, debug=False)

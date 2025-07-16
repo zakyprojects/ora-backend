@@ -3,7 +3,7 @@ from flask_cors import CORS
 import os
 import google.generativeai as genai
 from dotenv import load_dotenv
-from google.api_core.exceptions import ResourceExhausted
+from google.api_core.exceptions import ResourceExhausted, ServiceUnavailable
 
 # Load API key
 load_dotenv()
@@ -13,7 +13,12 @@ app = Flask(__name__)
 CORS(app)
 
 # Configure Gemini
-genai.configure(api_key=API_KEY)
+try:
+    genai.configure(api_key=API_KEY)
+except Exception as e:
+    app.logger.error(f"Failed to configure Gemini: {e}")
+    # Handle missing API key gracefully
+    pass
 
 # Single global session to preserve conversation context
 global_chat_session = None
@@ -46,8 +51,11 @@ system_instruction = {
     ]
 }
 
-# Initialize the model with the system instruction
-model = genai.GenerativeModel("models/gemini-1.5-flash", system_instruction=system_instruction)
+
+# Initialize the model only if the API key is present
+model = None
+if API_KEY:
+    model = genai.GenerativeModel("models/gemini-1.5-flash", system_instruction=system_instruction)
 
 @app.route("/", methods=["GET", "HEAD"])
 def home():
@@ -60,16 +68,22 @@ def health():
 @app.route("/chat", methods=["POST"])
 def chat():
     global global_chat_session
+
+    if not model:
+        return jsonify({"error": "AI model is not configured. Please check the server's API key."}), 503
+
     data = request.json or {}
-    # Extract user message
-    user_msg = ""
-    if "messages" in data and isinstance(data["messages"], list):
+    user_msg = data.get("message", "")
+
+    # Fallback for different message structures
+    if not user_msg and "messages" in data and isinstance(data["messages"], list):
         for m in reversed(data["messages"]):
             if m.get("role") == "user":
                 user_msg = m.get("content", "")
                 break
-    else:
-        user_msg = data.get("message", "")
+
+    if not user_msg:
+        return jsonify({"error": "Message content is missing or empty."}), 400
 
     # Start or reuse the global session
     if global_chat_session is None:
@@ -79,11 +93,17 @@ def chat():
         response = global_chat_session.send_message(user_msg)
         return jsonify({"reply": response.text}), 200
     except ResourceExhausted:
+        app.logger.warning("ResourceExhausted: Usage limit reached.")
         return jsonify({"error": "I’ve reached my usage limit—please try again shortly."}), 429
+    except ServiceUnavailable:
+        app.logger.error("ServiceUnavailable: The model is currently overloaded or unavailable.")
+        return jsonify({"error": "The AI is currently overloaded. Please try your request again in a moment."}), 503
     except Exception as e:
-        app.logger.error(f"Chat error: {e}")
-        return jsonify({"error": "An unexpected error occurred. Let's try again soon."}), 500
+        app.logger.error(f"An unexpected chat error occurred: {e}")
+        # Reset the chat session on an unknown error
+        global_chat_session = None
+        return jsonify({"error": "An unexpected error occurred. Your session has been reset. Please try again."}), 500
 
 if __name__ == "__main__":
     port = int(os.getenv("PORT", 5000))
-    app.run(host="0.0.0.0", port=port, debug=True)
+    app.run(host="0.0.0.0", port=port, debug=False) # Set debug=False for production

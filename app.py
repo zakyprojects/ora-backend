@@ -42,7 +42,7 @@ system_instruction = {
         "- Role & Education: BS Computer Science student at Agricultural University of Peshawar",
         "- Location & Heritage: Pashtun from Nowshera (MuhammadZai tribe), currently living in Risalpur Cantt",
         "- Philosophy: Real-world learning over traditional college; guided by discipline, legacy, and Pashtun honor",
-        "- Milestones: Completed CS50x (May 10, 2025) & CS50P (May 2025); on video 89/139 of CodeWithHarry’s Web Dev course",
+        "- Milestones: Completed CS50x (May 10, 2025) & CS50P (May 2025); now in cs50w; and also learning react",
         "- Tech Stack: C, Python, HTML5/CSS3 (responsive, modern), vanilla JS; skilled in OOP, pointers, arrays, file handling",
         "- Projects: Homepage at zakyprojects.site; Netflix & Spotify clones (frontend only); AI projects",
         "- Current: ‘Ora’ AI assistant (Flask on Render + static frontend on GitHub Pages); multi-project hub at zakyprojects.site",
